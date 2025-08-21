@@ -93,6 +93,7 @@ class RegressionAnalyzer:
         
         self.fitted_models = {}
         self.model_scores = {}
+        self.model_results = {}  # Store detailed results including CV scores
         self.scaler = StandardScaler()
         
     def fit_all_algorithms(self, test_size=0.2, random_state=42):
@@ -155,7 +156,8 @@ class RegressionAnalyzer:
                 else:
                     cv_scores = cross_val_score(algorithm, X_train, y_train, cv=5, scoring='r2')
                 
-                results[name] = {
+                # Store detailed results
+                model_result = {
                     'MSE': mse,
                     'RMSE': rmse,
                     'MAE': mae,
@@ -164,6 +166,8 @@ class RegressionAnalyzer:
                     'CV_R2_Std': cv_scores.std()
                 }
                 
+                results[name] = model_result
+                self.model_results[name] = model_result  # Store for later access
                 self.model_scores[name] = r2
                 
             except Exception as e:

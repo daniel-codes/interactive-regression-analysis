@@ -289,25 +289,59 @@ class Interactive3DVisualizer:
         """Show a comparison window with all model performances."""
         comparison_window = tk.Toplevel(self.root)
         comparison_window.title("Model Performance Comparison")
-        comparison_window.geometry("800x600")
+        comparison_window.geometry("1000x600")
         
-        # Create treeview for model comparison
-        columns = ('Model', 'R² Score', 'CV R² Mean', 'CV R² Std')
+        # Create treeview for model comparison with more columns
+        columns = ('Model', 'R² Score', 'CV R² Mean', 'CV R² Std', 'RMSE', 'MAE')
         tree = ttk.Treeview(comparison_window, columns=columns, show='headings')
         
+        # Configure column headings and widths
+        column_widths = {'Model': 200, 'R² Score': 120, 'CV R² Mean': 120, 'CV R² Std': 120, 'RMSE': 100, 'MAE': 100}
         for col in columns:
             tree.heading(col, text=col)
-            tree.column(col, width=150)
+            tree.column(col, width=column_widths.get(col, 100))
         
-        # Populate with model scores
+        # Populate with detailed model results
         for model_name in self.analyzer.model_scores:
-            r2_score = self.analyzer.model_scores[model_name]
-            tree.insert('', 'end', values=(model_name, f'{r2_score:.4f}', 'N/A', 'N/A'))
+            # Get detailed results if available
+            if hasattr(self.analyzer, 'model_results') and model_name in self.analyzer.model_results:
+                results = self.analyzer.model_results[model_name]
+                r2_score = results['R2_Score']
+                cv_mean = results['CV_R2_Mean']
+                cv_std = results['CV_R2_Std']
+                rmse = results['RMSE']
+                mae = results['MAE']
+                
+                tree.insert('', 'end', values=(
+                    model_name, 
+                    f'{r2_score:.4f}', 
+                    f'{cv_mean:.4f}', 
+                    f'{cv_std:.4f}',
+                    f'{rmse:.2f}',
+                    f'{mae:.2f}'
+                ))
+            else:
+                # Fallback to basic score only
+                r2_score = self.analyzer.model_scores[model_name]
+                tree.insert('', 'end', values=(model_name, f'{r2_score:.4f}', 'N/A', 'N/A', 'N/A', 'N/A'))
         
-        tree.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        # Add scrollbar
+        scrollbar = ttk.Scrollbar(comparison_window, orient=tk.VERTICAL, command=tree.yview)
+        tree.configure(yscrollcommand=scrollbar.set)
+        
+        # Pack components
+        tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(10, 0), pady=10)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y, padx=(0, 10), pady=10)
+        
+        # Add information label
+        info_frame = ttk.Frame(comparison_window)
+        info_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
+        
+        ttk.Label(info_frame, text="R² Score: Coefficient of determination (higher is better)\nCV R² Mean/Std: 5-fold cross-validation R² statistics\nRMSE: Root Mean Square Error (lower is better)\nMAE: Mean Absolute Error (lower is better)", 
+                 justify=tk.LEFT, font=('TkDefaultFont', 9)).pack(side=tk.LEFT)
         
         # Add close button
-        ttk.Button(comparison_window, text="Close", command=comparison_window.destroy).pack(pady=10)
+        ttk.Button(info_frame, text="Close", command=comparison_window.destroy).pack(side=tk.RIGHT)
     
     def run(self):
         """Start the GUI main loop."""
