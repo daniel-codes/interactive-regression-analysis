@@ -1,0 +1,18 @@
+Collecting seaborn
+  Using cached seaborn-0.13.2-py3-none-any.whl (294 kB)
+Requirement already satisfied: matplotlib!=3.6.1,>=3.4 in /usr/lib/python3/dist-packages (from seaborn) (3.5.1)
+Collecting pandas>=1.2
+  Using cached pandas-2.3.2-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (12.3 MB)
+Requirement already satisfied: numpy!=1.24.0,>=1.20 in /usr/lib/python3/dist-packages (from seaborn) (1.21.5)
+Requirement already satisfied: pytz>=2020.1 in /usr/lib/python3/dist-packages (from pandas>=1.2->seaborn) (2022.1)
+Collecting tzdata>=2022.7
+  Using cached tzdata-2025.2-py2.py3-none-any.whl (347 kB)
+Collecting numpy!=1.24.0,>=1.20
+  Using cached numpy-2.2.6-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (16.8 MB)
+Requirement already satisfied: python-dateutil>=2.8.2 in /root/.local/lib/python3.10/site-packages (from pandas>=1.2->seaborn) (2.9.0.post0)
+Requirement already satisfied: six>=1.5 in /usr/lib/python3/dist-packages (from python-dateutil>=2.8.2->pandas>=1.2->seaborn) (1.16.0)
+Installing collected packages: tzdata, numpy, pandas, seaborn
+  Attempting uninstall: numpy
+    Found existing installation: numpy 1.21.5
+    Not uninstalling numpy at /usr/lib/python3/dist-packages, outside environment /usr
+    Can't uninstall 'numpy'. No files were found to uninstall.

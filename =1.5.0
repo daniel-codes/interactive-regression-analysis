@@ -1,0 +1,6 @@
+Collecting xgboost
+  Downloading xgboost-3.0.4-py3-none-manylinux_2_28_x86_64.whl (94.9 MB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 94.9/94.9 MB 23.8 MB/s eta 0:00:00
+Collecting nvidia-nccl-cu12
+  Downloading nvidia_nccl_cu12-2.27.7-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (322.5 MB)
+     ━╸                                       12.1/322.5 MB 65.6 MB/s eta 0:00:05
