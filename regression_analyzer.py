@@ -50,8 +50,16 @@ class RegressionAnalyzer:
         numeric_cols = self.df.select_dtypes(include=[np.number]).columns.tolist()
         self.feature_columns = [col for col in self.feature_columns if col in numeric_cols]
         
-        if len(self.feature_columns) < 2:
-            raise ValueError("Need at least 2 numeric feature columns for analysis")
+        # Check for required spatial coordinates
+        if 'row' not in self.feature_columns or 'col' not in self.feature_columns:
+            raise ValueError("Dataset must contain 'row' and 'col' columns for spatial visualization")
+        
+        if len(self.feature_columns) < 3:  # row, col, + at least 1 other feature
+            raise ValueError("Need at least 3 numeric feature columns (including 'row' and 'col') for analysis")
+        
+        # Separate spatial coordinates from analysis features
+        self.spatial_columns = ['row', 'col']
+        self.analysis_features = [col for col in self.feature_columns if col not in self.spatial_columns]
         
         self.X = self.df[self.feature_columns]
         self.y = self.df[target_column]
@@ -219,31 +227,70 @@ class RegressionAnalyzer:
 
 def create_sample_dataset():
     """
-    Create a sample dataset for demonstration purposes.
+    Create a sample dataset for demonstration purposes with row/col spatial features.
     
     Returns:
-        pd.DataFrame: Sample dataset with multiple features and a target variable
+        pd.DataFrame: Sample dataset with row/col coordinates, multiple features and a target variable
     """
     np.random.seed(42)
     n_samples = 300
     
-    # Generate features
-    feature1 = np.random.normal(50, 15, n_samples)  # Temperature
-    feature2 = np.random.normal(30, 10, n_samples)  # Humidity
-    feature3 = np.random.normal(25, 5, n_samples)   # Pressure
-    feature4 = np.random.uniform(0, 100, n_samples) # Random feature
+    # Create spatial grid coordinates
+    grid_size = int(np.sqrt(n_samples)) + 1  # Approximately square grid
+    rows = np.random.randint(0, grid_size, n_samples)
+    cols = np.random.randint(0, grid_size, n_samples)
     
-    # Create target with some relationship to features
-    noise = np.random.normal(0, 5, n_samples)
-    target = (0.5 * feature1 + 0.3 * feature2 + 0.2 * feature3 + 
-              0.1 * feature4 + noise + 10)
+    # Generate 10 additional features with realistic names and relationships
+    temperature = np.random.normal(50, 15, n_samples)
+    humidity = np.random.normal(30, 10, n_samples)
+    pressure = np.random.normal(25, 5, n_samples)
+    wind_speed = np.random.exponential(10, n_samples)
+    elevation = np.random.uniform(0, 1000, n_samples)
+    soil_ph = np.random.normal(6.5, 1.0, n_samples)
+    rainfall = np.random.gamma(2, 5, n_samples)
+    vegetation_index = np.random.beta(2, 2, n_samples)
+    population_density = np.random.lognormal(2, 1, n_samples)
+    industrial_index = np.random.uniform(0, 100, n_samples)
     
-    # Create DataFrame
+    # Add spatial correlation to some features based on row/col position
+    # This makes the spatial visualization more interesting
+    spatial_factor = 0.1
+    temperature += spatial_factor * (rows + cols)
+    humidity -= spatial_factor * np.abs(rows - cols)
+    elevation += spatial_factor * (rows * cols) / grid_size
+    
+    # Create target with complex relationships including spatial effects
+    noise = np.random.normal(0, 8, n_samples)
+    target = (0.3 * temperature + 
+              0.2 * humidity + 
+              0.15 * pressure + 
+              0.1 * wind_speed +
+              0.05 * elevation / 100 +
+              0.1 * soil_ph * 10 +
+              0.05 * rainfall +
+              0.1 * vegetation_index * 50 +
+              0.02 * np.log(population_density + 1) * 10 +
+              0.03 * industrial_index +
+              # Spatial effects
+              0.05 * (rows + cols) +
+              0.02 * np.sin(rows / grid_size * 2 * np.pi) * 20 +
+              0.02 * np.cos(cols / grid_size * 2 * np.pi) * 20 +
+              noise + 50)
+    
+    # Create DataFrame with row/col as first features
     df = pd.DataFrame({
-        'temperature': feature1,
-        'humidity': feature2,
-        'pressure': feature3,
-        'random_feature': feature4,
+        'row': rows,
+        'col': cols,
+        'temperature': temperature,
+        'humidity': humidity,
+        'pressure': pressure,
+        'wind_speed': wind_speed,
+        'elevation': elevation,
+        'soil_ph': soil_ph,
+        'rainfall': rainfall,
+        'vegetation_index': vegetation_index,
+        'population_density': population_density,
+        'industrial_index': industrial_index,
         'target_value': target
     })
     

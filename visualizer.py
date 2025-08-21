@@ -30,10 +30,18 @@ class Interactive3DVisualizer:
         self.root.title("Interactive Regression Analysis - 3D Visualization")
         self.root.geometry("1200x800")
         
-        # Variables for dropdowns
-        self.x_var = tk.StringVar(value=self.analyzer.feature_columns[0])
-        self.y_var = tk.StringVar(value=self.analyzer.feature_columns[1] if len(self.analyzer.feature_columns) > 1 else self.analyzer.feature_columns[0])
+        # Fixed spatial coordinates for X/Y axes
+        self.x_var = tk.StringVar(value="row")
+        self.y_var = tk.StringVar(value="col")
         self.model_var = tk.StringVar(value=list(self.analyzer.fitted_models.keys())[0])
+        
+        # Feature selection for regression analysis
+        self.feature_vars = {}
+        self.selected_features = []
+        for feature in self.analyzer.analysis_features:
+            var = tk.BooleanVar(value=True)  # All features selected by default
+            self.feature_vars[feature] = var
+            self.selected_features.append(feature)
         
         self.setup_gui()
         
@@ -57,25 +65,52 @@ class Interactive3DVisualizer:
     
     def setup_controls(self, parent):
         """Set up the control panel."""
-        # Feature selection
-        ttk.Label(parent, text="X-Axis Feature:").grid(row=0, column=0, padx=5, pady=5, sticky='w')
-        x_dropdown = ttk.Combobox(parent, textvariable=self.x_var, values=self.analyzer.feature_columns, state='readonly')
-        x_dropdown.grid(row=0, column=1, padx=5, pady=5)
-        x_dropdown.bind('<<ComboboxSelected>>', lambda e: self.update_plot())
+        # Create main control frame and feature selection frame
+        main_controls = ttk.Frame(parent)
+        main_controls.pack(side=tk.TOP, fill=tk.X, pady=5)
         
-        ttk.Label(parent, text="Y-Axis Feature:").grid(row=0, column=2, padx=5, pady=5, sticky='w')
-        y_dropdown = ttk.Combobox(parent, textvariable=self.y_var, values=self.analyzer.feature_columns, state='readonly')
-        y_dropdown.grid(row=0, column=3, padx=5, pady=5)
-        y_dropdown.bind('<<ComboboxSelected>>', lambda e: self.update_plot())
+        feature_frame = ttk.LabelFrame(parent, text="Feature Selection for Regression", padding=10)
+        feature_frame.pack(side=tk.TOP, fill=tk.X, pady=5)
         
-        ttk.Label(parent, text="Model:").grid(row=0, column=4, padx=5, pady=5, sticky='w')
-        model_dropdown = ttk.Combobox(parent, textvariable=self.model_var, values=list(self.analyzer.fitted_models.keys()), state='readonly')
+        # Fixed spatial coordinates (read-only)
+        ttk.Label(main_controls, text="X-Axis (Fixed):").grid(row=0, column=0, padx=5, pady=5, sticky='w')
+        x_label = ttk.Label(main_controls, text="row", relief="sunken", width=10)
+        x_label.grid(row=0, column=1, padx=5, pady=5)
+        
+        ttk.Label(main_controls, text="Y-Axis (Fixed):").grid(row=0, column=2, padx=5, pady=5, sticky='w')
+        y_label = ttk.Label(main_controls, text="col", relief="sunken", width=10)
+        y_label.grid(row=0, column=3, padx=5, pady=5)
+        
+        # Model selection
+        ttk.Label(main_controls, text="Model:").grid(row=0, column=4, padx=5, pady=5, sticky='w')
+        model_dropdown = ttk.Combobox(main_controls, textvariable=self.model_var, values=list(self.analyzer.fitted_models.keys()), state='readonly')
         model_dropdown.grid(row=0, column=5, padx=5, pady=5)
         model_dropdown.bind('<<ComboboxSelected>>', lambda e: self.update_plot())
         
         # Buttons
-        ttk.Button(parent, text="Refresh Plot", command=self.update_plot).grid(row=0, column=6, padx=5, pady=5)
-        ttk.Button(parent, text="Show Model Comparison", command=self.show_model_comparison).grid(row=0, column=7, padx=5, pady=5)
+        ttk.Button(main_controls, text="Refresh Plot", command=self.update_plot).grid(row=0, column=6, padx=5, pady=5)
+        ttk.Button(main_controls, text="Refit Models", command=self.refit_models).grid(row=0, column=7, padx=5, pady=5)
+        ttk.Button(main_controls, text="Model Comparison", command=self.show_model_comparison).grid(row=0, column=8, padx=5, pady=5)
+        
+        # Feature selection checkboxes
+        ttk.Label(feature_frame, text="Select features to include in regression analysis:").grid(row=0, column=0, columnspan=4, sticky='w', pady=(0, 10))
+        
+        # Create checkboxes for features in a grid
+        row_num = 1
+        col_num = 0
+        for i, feature in enumerate(self.analyzer.analysis_features):
+            checkbox = ttk.Checkbutton(
+                feature_frame, 
+                text=feature, 
+                variable=self.feature_vars[feature],
+                command=lambda: self.update_selected_features()
+            )
+            checkbox.grid(row=row_num, column=col_num, padx=10, pady=2, sticky='w')
+            
+            col_num += 1
+            if col_num >= 4:  # 4 columns
+                col_num = 0
+                row_num += 1
     
     def setup_plot_area(self, parent):
         """Set up the matplotlib plot area."""
@@ -83,19 +118,61 @@ class Interactive3DVisualizer:
         self.canvas = FigureCanvasTkAgg(self.figure, parent)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
     
+    def update_selected_features(self):
+        """Update the list of selected features for regression analysis."""
+        self.selected_features = []
+        for feature, var in self.feature_vars.items():
+            if var.get():
+                self.selected_features.append(feature)
+        
+        # Always include spatial coordinates
+        all_features = self.analyzer.spatial_columns + self.selected_features
+        print(f"Selected features: {all_features}")
+    
+    def refit_models(self):
+        """Refit all models with the currently selected features."""
+        if len(self.selected_features) == 0:
+            messagebox.showwarning("Warning", "Please select at least one feature for regression analysis")
+            return
+        
+        # Update analyzer's feature selection
+        all_features = self.analyzer.spatial_columns + self.selected_features
+        self.analyzer.feature_columns = all_features
+        self.analyzer.X = self.analyzer.df[all_features]
+        
+        # Refit all algorithms
+        print("Refitting models with selected features...")
+        try:
+            self.analyzer.fit_all_algorithms()
+            
+            # Update model dropdown with new models
+            model_dropdown = None
+            for child in self.root.winfo_children():
+                for grandchild in child.winfo_children():
+                    if hasattr(grandchild, 'winfo_children'):
+                        for control in grandchild.winfo_children():
+                            if isinstance(control, ttk.Combobox) and 'model' in str(control).lower():
+                                control['values'] = list(self.analyzer.fitted_models.keys())
+                                self.model_var.set(list(self.analyzer.fitted_models.keys())[0])
+                                break
+            
+            self.update_plot()
+            messagebox.showinfo("Success", f"Models refitted with {len(self.selected_features)} features")
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Error refitting models: {str(e)}")
+    
     def update_plot(self):
         """Update the 3D plot with current selections."""
         try:
             self.figure.clear()
             
-            x_feature = self.x_var.get()
-            y_feature = self.y_var.get()
+            # Fixed spatial coordinates
+            x_feature = "row"
+            y_feature = "col"
             model_name = self.model_var.get()
             
-            if x_feature == y_feature:
-                messagebox.showwarning("Warning", "X and Y features should be different for better visualization")
-            
-            # Get data
+            # Get data - spatial coordinates for X/Y, target for Z
             x_data = self.analyzer.df[x_feature].values
             y_data = self.analyzer.df[y_feature].values
             z_data = self.analyzer.df[self.analyzer.target_column].values
@@ -111,10 +188,13 @@ class Interactive3DVisualizer:
                 self.add_prediction_surface(ax, x_feature, y_feature, model_name)
             
             # Labels and title
-            ax.set_xlabel(f'{x_feature}', fontsize=12)
-            ax.set_ylabel(f'{y_feature}', fontsize=12)
+            ax.set_xlabel('Row (Spatial X)', fontsize=12)
+            ax.set_ylabel('Col (Spatial Y)', fontsize=12)
             ax.set_zlabel(f'{self.analyzer.target_column}', fontsize=12)
-            ax.set_title(f'3D Regression Visualization\nModel: {model_name}', fontsize=14)
+            
+            # Create title with selected features info
+            selected_count = len(self.selected_features) if hasattr(self, 'selected_features') else len(self.analyzer.analysis_features)
+            ax.set_title(f'Spatial 3D Regression Visualization\nModel: {model_name} | Features: {selected_count}', fontsize=14)
             
             # Add colorbar
             self.figure.colorbar(scatter, ax=ax, shrink=0.5, aspect=20)

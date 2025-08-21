@@ -92,6 +92,19 @@ def test_error_handling():
         except ValueError:
             pass  # Expected
         
+        # Test missing row/col columns
+        print("  ✓ Testing missing row/col columns...")
+        no_spatial_data = pd.DataFrame({
+            'feature1': [1, 2, 3],
+            'feature2': [4, 5, 6],
+            'target': [7, 8, 9]
+        })
+        try:
+            RegressionAnalyzer(no_spatial_data, 'target')
+            assert False, "Should have raised ValueError for missing row/col"
+        except ValueError:
+            pass  # Expected
+        
         print("✅ All error handling tests passed!")
         return True
         
@@ -110,6 +123,8 @@ def test_with_different_datasets():
         print("  ✓ Testing with small dataset...")
         np.random.seed(42)
         small_data = pd.DataFrame({
+            'row': np.random.randint(0, 10, 50),
+            'col': np.random.randint(0, 10, 50),
             'x1': np.random.normal(0, 1, 50),
             'x2': np.random.normal(5, 2, 50),
             'x3': np.random.uniform(-1, 1, 50),
