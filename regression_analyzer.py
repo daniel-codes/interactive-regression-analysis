@@ -54,12 +54,17 @@ class RegressionAnalyzer:
         if 'row' not in self.feature_columns or 'col' not in self.feature_columns:
             raise ValueError("Dataset must contain 'row' and 'col' columns for spatial visualization")
         
-        if len(self.feature_columns) < 3:  # row, col, + at least 1 other feature
-            raise ValueError("Need at least 3 numeric feature columns (including 'row' and 'col') for analysis")
-        
-        # Separate spatial coordinates from analysis features
+        # Dynamically identify analysis features (all columns except row, col, and target)
         self.spatial_columns = ['row', 'col']
-        self.analysis_features = [col for col in self.feature_columns if col not in self.spatial_columns]
+        excluded_columns = self.spatial_columns + [target_column]
+        self.analysis_features = [col for col in self.feature_columns if col not in excluded_columns]
+        
+        if len(self.analysis_features) < 1:
+            raise ValueError("Need at least 1 analysis feature column (excluding 'row', 'col', and target)")
+        
+        print(f"Identified {len(self.analysis_features)} analysis features: {self.analysis_features}")
+        print(f"Spatial columns: {self.spatial_columns}")
+        print(f"Target column: {target_column}")
         
         self.X = self.df[self.feature_columns]
         self.y = self.df[target_column]

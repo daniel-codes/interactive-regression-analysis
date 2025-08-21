@@ -35,13 +35,18 @@ class Interactive3DVisualizer:
         self.y_var = tk.StringVar(value="col")
         self.model_var = tk.StringVar(value=list(self.analyzer.fitted_models.keys())[0])
         
-        # Feature selection for regression analysis
+        # Feature selection for regression analysis (dynamic based on dataframe)
         self.feature_vars = {}
         self.selected_features = []
+        
+        # Initialize feature selection with all available analysis features
+        print(f"Initializing feature selection for {len(self.analyzer.analysis_features)} features")
         for feature in self.analyzer.analysis_features:
             var = tk.BooleanVar(value=True)  # All features selected by default
             self.feature_vars[feature] = var
             self.selected_features.append(feature)
+        
+        print(f"Feature selection initialized: {self.selected_features}")
         
         self.setup_gui()
         
@@ -93,22 +98,36 @@ class Interactive3DVisualizer:
         ttk.Button(main_controls, text="Model Comparison", command=self.show_model_comparison).grid(row=0, column=8, padx=5, pady=5)
         
         # Feature selection checkboxes
-        ttk.Label(feature_frame, text="Select features to include in regression analysis:").grid(row=0, column=0, columnspan=4, sticky='w', pady=(0, 10))
+        num_features = len(self.analyzer.analysis_features)
+        ttk.Label(feature_frame, text=f"Select features to include in regression analysis ({num_features} available):").grid(row=0, column=0, columnspan=5, sticky='w', pady=(0, 10))
         
-        # Create checkboxes for features in a grid
-        row_num = 1
+        # Add Select All / Deselect All buttons
+        button_frame = ttk.Frame(feature_frame)
+        button_frame.grid(row=1, column=0, columnspan=5, sticky='w', pady=(0, 10))
+        
+        ttk.Button(button_frame, text="Select All", command=self.select_all_features).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(button_frame, text="Deselect All", command=self.deselect_all_features).pack(side=tk.LEFT)
+        
+        # Create checkboxes for features in a flexible grid
+        # Adjust columns based on number of features
+        max_cols = min(5, max(3, num_features // 3 + 1))  # 3-5 columns based on feature count
+        row_num = 2
         col_num = 0
+        
         for i, feature in enumerate(self.analyzer.analysis_features):
+            # Create a more readable feature name for display
+            display_name = feature.replace('_', ' ').title()
+            
             checkbox = ttk.Checkbutton(
                 feature_frame, 
-                text=feature, 
+                text=f"{display_name}",
                 variable=self.feature_vars[feature],
                 command=lambda: self.update_selected_features()
             )
             checkbox.grid(row=row_num, column=col_num, padx=10, pady=2, sticky='w')
             
             col_num += 1
-            if col_num >= 4:  # 4 columns
+            if col_num >= max_cols:
                 col_num = 0
                 row_num += 1
     
@@ -128,6 +147,20 @@ class Interactive3DVisualizer:
         # Always include spatial coordinates
         all_features = self.analyzer.spatial_columns + self.selected_features
         print(f"Selected features: {all_features}")
+    
+    def select_all_features(self):
+        """Select all available features for regression analysis."""
+        for var in self.feature_vars.values():
+            var.set(True)
+        self.update_selected_features()
+        print("All features selected")
+    
+    def deselect_all_features(self):
+        """Deselect all features for regression analysis."""
+        for var in self.feature_vars.values():
+            var.set(False)
+        self.update_selected_features()
+        print("All features deselected")
     
     def refit_models(self):
         """Refit all models with the currently selected features."""
