@@ -265,6 +265,44 @@ class Interactive3DVisualizer:
         print(f"Filtered data: {len(filtered_df)} out of {len(self.analyzer.df)} rows")
         return filtered_df
     
+    def calculate_filtered_metrics(self, filtered_data, model_name):
+        """Calculate performance metrics based on filtered training data visible in the plot."""
+        if len(filtered_data) == 0:
+            # No filtered data - return None to indicate fallback should be used
+            return None
+        
+        try:
+            # Get features for prediction (same as used in training)
+            X_filtered = filtered_data[self.analyzer.feature_columns]
+            y_true = filtered_data[self.analyzer.target_column].values
+            
+            # Make predictions on the filtered data
+            y_pred = self.analyzer.predict_with_model(model_name, X_filtered)
+            
+            # Calculate metrics
+            from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
+            import numpy as np
+            
+            r2 = r2_score(y_true, y_pred)
+            mse = mean_squared_error(y_true, y_pred)
+            mae = mean_absolute_error(y_true, y_pred)
+            largest_diff = np.max(np.abs(y_true - y_pred))
+            
+            metrics = {
+                'R2': r2,
+                'MSE': mse,
+                'MAE': mae,
+                'Max_Diff': largest_diff,
+                'N_Points': len(filtered_data)
+            }
+            
+            print(f"Calculated filtered metrics for {len(filtered_data)} points: R²={r2:.4f}, MSE={mse:.2f}, MAE={mae:.2f}, Max Diff={largest_diff:.2f}")
+            return metrics
+            
+        except Exception as e:
+            print(f"Error calculating filtered metrics: {str(e)}")
+            return None
+    
     def refit_models(self):
         """Refit all models with the currently selected features."""
         if len(self.selected_features) == 0:
@@ -314,28 +352,26 @@ class Interactive3DVisualizer:
             # Get filtered data based on plot filter selections
             filtered_data = self.get_filtered_data()
             
-            if len(filtered_data) == 0:
-                # If no data after filtering, show warning and return
-                ax = self.figure.add_subplot(111, projection='3d')
-                ax.text(0.5, 0.5, 0.5, 'No data points match the selected filters', 
-                       horizontalalignment='center', verticalalignment='center', 
-                       transform=ax.transAxes, fontsize=14)
-                ax.set_title('No Data Available with Current Filters')
-                self.canvas.draw()
-                return
-            
-            # Get data from filtered dataset - spatial coordinates for X/Y, target for Z
-            x_data = filtered_data[x_feature].values
-            y_data = filtered_data[y_feature].values
-            z_data = filtered_data[self.analyzer.target_column].values
-            
             # Create 3D subplot
             ax = self.figure.add_subplot(111, projection='3d')
             
-            # Plot actual data points
-            scatter = ax.scatter(x_data, y_data, z_data, c=z_data, cmap='viridis', alpha=0.6, s=50)
+            # Plot actual data points only if filtered data exists
+            scatter = None
+            if len(filtered_data) > 0:
+                # Get data from filtered dataset - spatial coordinates for X/Y, target for Z
+                x_data = filtered_data[x_feature].values
+                y_data = filtered_data[y_feature].values
+                z_data = filtered_data[self.analyzer.target_column].values
+                
+                # Plot actual data points
+                scatter = ax.scatter(x_data, y_data, z_data, c=z_data, cmap='viridis', alpha=0.6, s=50)
+            else:
+                # Add text to indicate no training points match the filters
+                ax.text2D(0.02, 0.02, 'No training points match current filters', 
+                         transform=ax.transAxes, fontsize=10, 
+                         bbox=dict(boxstyle='round', facecolor='yellow', alpha=0.7))
             
-            # Create prediction surface if model is available
+            # Always create prediction surface if model is available
             if model_name in self.analyzer.fitted_models:
                 self.add_prediction_surface(ax, x_feature, y_feature, model_name, filtered_data)
             
@@ -354,14 +390,39 @@ class Interactive3DVisualizer:
             
             ax.set_title(f'Spatial 3D Regression Visualization\nModel: {model_name} | Features: {selected_count}{filter_info}{data_info}', fontsize=14)
             
-            # Add colorbar
-            self.figure.colorbar(scatter, ax=ax, shrink=0.5, aspect=20)
+            # Add colorbar only if we have scatter points
+            if scatter is not None:
+                self.figure.colorbar(scatter, ax=ax, shrink=0.5, aspect=20)
             
-            # Model performance info
-            if model_name in self.analyzer.model_scores:
-                r2_score = self.analyzer.model_scores[model_name]
-                ax.text2D(0.02, 0.98, f'R² Score: {r2_score:.4f}', transform=ax.transAxes, 
-                         fontsize=12, verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+            # Model performance info - calculate metrics based on visible data
+            metrics = self.calculate_filtered_metrics(filtered_data, model_name)
+            
+            if metrics is not None:
+                # Use metrics calculated from visible training points
+                metrics_text = (f"Plot Metrics (n={metrics['N_Points']}):\n"
+                               f"R² = {metrics['R2']:.4f}\n"
+                               f"MSE = {metrics['MSE']:.2f}\n"
+                               f"MAE = {metrics['MAE']:.2f}\n"
+                               f"Max Diff = {metrics['Max_Diff']:.2f}")
+                bbox_color = 'lightgreen'
+            elif model_name in self.analyzer.model_results:
+                # Fallback to overall model metrics when no visible points
+                results = self.analyzer.model_results[model_name]
+                metrics_text = (f"Overall Model Metrics:\n"
+                               f"R² = {results['R2_Score']:.4f}\n"
+                               f"MSE = {results['MSE']:.2f}\n"
+                               f"MAE = {results['MAE']:.2f}\n"
+                               f"RMSE = {results['RMSE']:.2f}")
+                bbox_color = 'wheat'
+            else:
+                # Final fallback to basic R2 score
+                r2_score = self.analyzer.model_scores.get(model_name, 0.0)
+                metrics_text = f"R² Score: {r2_score:.4f}"
+                bbox_color = 'wheat'
+            
+            ax.text2D(0.02, 0.98, metrics_text, transform=ax.transAxes, 
+                     fontsize=10, verticalalignment='top', 
+                     bbox=dict(boxstyle='round', facecolor=bbox_color, alpha=0.8))
             
             self.canvas.draw()
             
@@ -371,9 +432,17 @@ class Interactive3DVisualizer:
     def add_prediction_surface(self, ax, x_feature, y_feature, model_name, filtered_data):
         """Add prediction surface to the 3D plot based on filtered data."""
         try:
-            # Create a grid for predictions based on filtered data range
-            x_min, x_max = filtered_data[x_feature].min(), filtered_data[x_feature].max()
-            y_min, y_max = filtered_data[y_feature].min(), filtered_data[y_feature].max()
+            # Create a grid for predictions based on data range
+            if len(filtered_data) > 0:
+                # Use filtered data range if data exists
+                x_min, x_max = filtered_data[x_feature].min(), filtered_data[x_feature].max()
+                y_min, y_max = filtered_data[y_feature].min(), filtered_data[y_feature].max()
+                reference_data = filtered_data
+            else:
+                # Use full dataset range if no filtered data exists
+                x_min, x_max = self.analyzer.df[x_feature].min(), self.analyzer.df[x_feature].max()
+                y_min, y_max = self.analyzer.df[y_feature].min(), self.analyzer.df[y_feature].max()
+                reference_data = self.analyzer.df
             
             # Extend the range slightly
             x_range = x_max - x_min
@@ -407,36 +476,39 @@ class Interactive3DVisualizer:
                             numeric_value = float(filter_value)
                             grid_points[feature] = numeric_value
                         except ValueError:
-                            # Handle string values - find the first matching numeric value from filtered data
-                            matching_values = filtered_data[filtered_data[feature].astype(str) == filter_value][feature]
+                            # Handle string values - find the first matching numeric value from reference data
+                            matching_values = reference_data[reference_data[feature].astype(str) == filter_value][feature]
                             if len(matching_values) > 0:
                                 grid_points[feature] = matching_values.iloc[0]
                             else:
-                                # Fallback to filtered data median
-                                grid_points[feature] = filtered_data[feature].median()
+                                # Fallback to reference data median
+                                grid_points[feature] = reference_data[feature].median()
                     else:
-                        # No filter applied - use median from filtered dataset
-                        grid_points[feature] = filtered_data[feature].median()
+                        # No filter applied - use median from reference dataset
+                        grid_points[feature] = reference_data[feature].median()
                 else:
                     # Feature not in filters (shouldn't happen, but handle gracefully)
-                    grid_points[feature] = filtered_data[feature].median()
+                    grid_points[feature] = reference_data[feature].median()
             
             # Ensure all required features are present for the model
             # The model expects all features that were used during training
             required_features = self.analyzer.feature_columns
             for col in required_features:
                 if col not in grid_points.columns:
-                    # Add missing column with median value from filtered data
-                    if col in filtered_data.columns:
-                        grid_points[col] = filtered_data[col].median()
+                    # Add missing column with median value from reference data
+                    if col in reference_data.columns:
+                        grid_points[col] = reference_data[col].median()
                     else:
-                        # Fallback to original data median if column not in filtered data
+                        # Fallback to original data median if column not in reference data
                         grid_points[col] = self.analyzer.df[col].median()
             
             # Reorder columns to match the training feature order
             grid_points = grid_points[required_features]
             
-            print(f"Generated prediction grid with {grid_size} points using filtered feature values")
+            if len(filtered_data) > 0:
+                print(f"Generated prediction grid with {grid_size} points using filtered feature values (filtered data available)")
+            else:
+                print(f"Generated prediction grid with {grid_size} points using filtered feature values (no filtered data, using full spatial range)")
             print(f"Grid features: {list(grid_points.columns)}")
             
             # Make predictions
