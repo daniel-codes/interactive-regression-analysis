@@ -28,7 +28,7 @@ class Interactive3DVisualizer:
         self.analyzer = analyzer
         self.root = tk.Tk()
         self.root.title("Interactive Regression Analysis - 3D Visualization")
-        self.root.geometry("1200x800")
+        self.root.geometry("1400x1000")
         
         # Fixed spatial coordinates for X/Y axes
         self.x_var = tk.StringVar(value="row")
@@ -48,16 +48,41 @@ class Interactive3DVisualizer:
         
         print(f"Feature selection initialized: {self.selected_features}")
         
+        # Feature filtering for plotting (dropdown filters for each feature)
+        self.plot_filter_vars = {}
+        self.plot_filter_values = {}
+        self.initialize_plot_filters()
+        
         self.setup_gui()
+    
+    def initialize_plot_filters(self):
+        """Initialize plot filters with unique values from training data for each feature."""
+        print("Initializing plot filters...")
+        
+        for feature in self.analyzer.analysis_features:
+            # Get unique values from the feature, sorted
+            unique_values = sorted(self.analyzer.df[feature].dropna().unique())
+            
+            # Create string variable for the dropdown selection
+            var = tk.StringVar()
+            
+            # Set default to "All" (no filtering)
+            var.set("All")
+            
+            # Store the variable and available values
+            self.plot_filter_vars[feature] = var
+            self.plot_filter_values[feature] = ["All"] + [str(val) for val in unique_values]
+        
+        print(f"Plot filters initialized for {len(self.plot_filter_vars)} features")
         
     def setup_gui(self):
         """Set up the GUI components."""
-        # Create main frames
+        # Create main frames with adjusted proportions
         control_frame = ttk.Frame(self.root)
-        control_frame.pack(side=tk.TOP, fill=tk.X, padx=10, pady=5)
+        control_frame.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
         
         plot_frame = ttk.Frame(self.root)
-        plot_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=10, pady=5)
+        plot_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=5, pady=2)
         
         # Control panel
         self.setup_controls(control_frame)
@@ -74,8 +99,12 @@ class Interactive3DVisualizer:
         main_controls = ttk.Frame(parent)
         main_controls.pack(side=tk.TOP, fill=tk.X, pady=5)
         
-        feature_frame = ttk.LabelFrame(parent, text="Feature Selection for Regression", padding=10)
-        feature_frame.pack(side=tk.TOP, fill=tk.X, pady=5)
+        feature_frame = ttk.LabelFrame(parent, text="Feature Selection for Regression", padding=5)
+        feature_frame.pack(side=tk.TOP, fill=tk.X, pady=3)
+        
+        # Feature filtering frame for plotting
+        plot_filter_frame = ttk.LabelFrame(parent, text="Feature Selection for Plotting", padding=5)
+        plot_filter_frame.pack(side=tk.TOP, fill=tk.X, pady=3)
         
         # Fixed spatial coordinates (read-only)
         ttk.Label(main_controls, text="X-Axis (Fixed):").grid(row=0, column=0, padx=5, pady=5, sticky='w')
@@ -99,11 +128,11 @@ class Interactive3DVisualizer:
         
         # Feature selection checkboxes
         num_features = len(self.analyzer.analysis_features)
-        ttk.Label(feature_frame, text=f"Select features to include in regression analysis ({num_features} available):").grid(row=0, column=0, columnspan=5, sticky='w', pady=(0, 10))
+        ttk.Label(feature_frame, text=f"Select features to include in regression analysis ({num_features} available):").grid(row=0, column=0, columnspan=5, sticky='w', pady=(0, 5))
         
         # Add Select All / Deselect All buttons
         button_frame = ttk.Frame(feature_frame)
-        button_frame.grid(row=1, column=0, columnspan=5, sticky='w', pady=(0, 10))
+        button_frame.grid(row=1, column=0, columnspan=5, sticky='w', pady=(0, 5))
         
         ttk.Button(button_frame, text="Select All", command=self.select_all_features).pack(side=tk.LEFT, padx=(0, 10))
         ttk.Button(button_frame, text="Deselect All", command=self.deselect_all_features).pack(side=tk.LEFT)
@@ -130,10 +159,57 @@ class Interactive3DVisualizer:
             if col_num >= max_cols:
                 col_num = 0
                 row_num += 1
+        
+        # Set up plot filtering controls
+        self.setup_plot_filter_controls(plot_filter_frame)
+    
+    def setup_plot_filter_controls(self, parent):
+        """Set up plot filtering dropdown controls."""
+        # Title and description
+        ttk.Label(parent, text="Filter data points and prediction surface by selecting specific feature values:").grid(
+            row=0, column=0, columnspan=6, sticky='w', pady=(0, 5)
+        )
+        
+        # Add Clear All Filters button
+        button_frame = ttk.Frame(parent)
+        button_frame.grid(row=1, column=0, columnspan=6, sticky='w', pady=(0, 5))
+        
+        ttk.Button(button_frame, text="Clear All Filters", command=self.clear_all_plot_filters).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(button_frame, text="Apply Filters", command=self.update_plot).pack(side=tk.LEFT)
+        
+        # Create dropdown filters for each feature in a flexible grid
+        num_features = len(self.analyzer.analysis_features)
+        max_cols = min(3, max(2, num_features // 4 + 1))  # 2-3 columns based on feature count
+        row_num = 2
+        col_num = 0
+        
+        for i, feature in enumerate(self.analyzer.analysis_features):
+            # Create a more readable feature name for display
+            display_name = feature.replace('_', ' ').title()
+            
+            # Feature label
+            label = ttk.Label(parent, text=f"{display_name}:")
+            label.grid(row=row_num, column=col_num*2, padx=(10, 5), pady=5, sticky='w')
+            
+            # Feature dropdown
+            dropdown = ttk.Combobox(
+                parent,
+                textvariable=self.plot_filter_vars[feature],
+                values=self.plot_filter_values[feature],
+                state='readonly',
+                width=15
+            )
+            dropdown.grid(row=row_num, column=col_num*2+1, padx=(0, 15), pady=5, sticky='w')
+            dropdown.bind('<<ComboboxSelected>>', lambda e: self.update_plot())
+            
+            col_num += 1
+            if col_num >= max_cols:
+                col_num = 0
+                row_num += 1
     
     def setup_plot_area(self, parent):
         """Set up the matplotlib plot area."""
-        self.figure = plt.Figure(figsize=(12, 8))
+        self.figure = plt.Figure(figsize=(16, 12))
         self.canvas = FigureCanvasTkAgg(self.figure, parent)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
     
@@ -162,6 +238,33 @@ class Interactive3DVisualizer:
         self.update_selected_features()
         print("All features deselected")
     
+    def clear_all_plot_filters(self):
+        """Clear all plot filters by setting them to 'All'."""
+        for var in self.plot_filter_vars.values():
+            var.set("All")
+        print("All plot filters cleared")
+        self.update_plot()
+    
+    def get_filtered_data(self):
+        """Get data filtered based on current plot filter selections."""
+        filtered_df = self.analyzer.df.copy()
+        
+        # Apply each filter
+        for feature, var in self.plot_filter_vars.items():
+            selected_value = var.get()
+            if selected_value != "All":
+                # Convert string back to appropriate type for comparison
+                try:
+                    # Try to convert to float first (for numeric values)
+                    numeric_value = float(selected_value)
+                    filtered_df = filtered_df[filtered_df[feature] == numeric_value]
+                except ValueError:
+                    # If conversion fails, treat as string
+                    filtered_df = filtered_df[filtered_df[feature].astype(str) == selected_value]
+        
+        print(f"Filtered data: {len(filtered_df)} out of {len(self.analyzer.df)} rows")
+        return filtered_df
+    
     def refit_models(self):
         """Refit all models with the currently selected features."""
         if len(self.selected_features) == 0:
@@ -189,6 +292,9 @@ class Interactive3DVisualizer:
                                 self.model_var.set(list(self.analyzer.fitted_models.keys())[0])
                                 break
             
+            # Reinitialize plot filters with the new feature set
+            self.initialize_plot_filters()
+            
             self.update_plot()
             messagebox.showinfo("Success", f"Models refitted with {len(self.selected_features)} features")
             
@@ -205,10 +311,23 @@ class Interactive3DVisualizer:
             y_feature = "col"
             model_name = self.model_var.get()
             
-            # Get data - spatial coordinates for X/Y, target for Z
-            x_data = self.analyzer.df[x_feature].values
-            y_data = self.analyzer.df[y_feature].values
-            z_data = self.analyzer.df[self.analyzer.target_column].values
+            # Get filtered data based on plot filter selections
+            filtered_data = self.get_filtered_data()
+            
+            if len(filtered_data) == 0:
+                # If no data after filtering, show warning and return
+                ax = self.figure.add_subplot(111, projection='3d')
+                ax.text(0.5, 0.5, 0.5, 'No data points match the selected filters', 
+                       horizontalalignment='center', verticalalignment='center', 
+                       transform=ax.transAxes, fontsize=14)
+                ax.set_title('No Data Available with Current Filters')
+                self.canvas.draw()
+                return
+            
+            # Get data from filtered dataset - spatial coordinates for X/Y, target for Z
+            x_data = filtered_data[x_feature].values
+            y_data = filtered_data[y_feature].values
+            z_data = filtered_data[self.analyzer.target_column].values
             
             # Create 3D subplot
             ax = self.figure.add_subplot(111, projection='3d')
@@ -218,16 +337,22 @@ class Interactive3DVisualizer:
             
             # Create prediction surface if model is available
             if model_name in self.analyzer.fitted_models:
-                self.add_prediction_surface(ax, x_feature, y_feature, model_name)
+                self.add_prediction_surface(ax, x_feature, y_feature, model_name, filtered_data)
             
             # Labels and title
             ax.set_xlabel('Row (Spatial X)', fontsize=12)
             ax.set_ylabel('Col (Spatial Y)', fontsize=12)
             ax.set_zlabel(f'{self.analyzer.target_column}', fontsize=12)
             
-            # Create title with selected features info
+            # Create title with selected features and filter info
             selected_count = len(self.selected_features) if hasattr(self, 'selected_features') else len(self.analyzer.analysis_features)
-            ax.set_title(f'Spatial 3D Regression Visualization\nModel: {model_name} | Features: {selected_count}', fontsize=14)
+            
+            # Count active filters
+            active_filters = sum(1 for var in self.plot_filter_vars.values() if var.get() != "All")
+            filter_info = f" | Filters: {active_filters}" if active_filters > 0 else ""
+            data_info = f" | Data: {len(filtered_data)}/{len(self.analyzer.df)} points"
+            
+            ax.set_title(f'Spatial 3D Regression Visualization\nModel: {model_name} | Features: {selected_count}{filter_info}{data_info}', fontsize=14)
             
             # Add colorbar
             self.figure.colorbar(scatter, ax=ax, shrink=0.5, aspect=20)
@@ -243,12 +368,12 @@ class Interactive3DVisualizer:
         except Exception as e:
             messagebox.showerror("Error", f"Error updating plot: {str(e)}")
     
-    def add_prediction_surface(self, ax, x_feature, y_feature, model_name):
-        """Add prediction surface to the 3D plot."""
+    def add_prediction_surface(self, ax, x_feature, y_feature, model_name, filtered_data):
+        """Add prediction surface to the 3D plot based on filtered data."""
         try:
-            # Create a grid for predictions
-            x_min, x_max = self.analyzer.df[x_feature].min(), self.analyzer.df[x_feature].max()
-            y_min, y_max = self.analyzer.df[y_feature].min(), self.analyzer.df[y_feature].max()
+            # Create a grid for predictions based on filtered data range
+            x_min, x_max = filtered_data[x_feature].min(), filtered_data[x_feature].max()
+            y_min, y_max = filtered_data[y_feature].min(), filtered_data[y_feature].max()
             
             # Extend the range slightly
             x_range = x_max - x_min
@@ -272,8 +397,24 @@ class Interactive3DVisualizer:
                 elif col == y_feature:
                     grid_points[col] = yy.ravel()
                 else:
-                    # Use median value for other features
-                    grid_points[col] = self.analyzer.df[col].median()
+                    # Use median value from filtered data for other features
+                    # If feature has a specific filter applied, use that value instead
+                    if col in self.plot_filter_vars and self.plot_filter_vars[col].get() != "All":
+                        # Use the filtered value for this feature
+                        filter_value = self.plot_filter_vars[col].get()
+                        try:
+                            numeric_value = float(filter_value)
+                            grid_points[col] = numeric_value
+                        except ValueError:
+                            # Handle string values - use the first matching numeric value from filtered data
+                            matching_values = filtered_data[filtered_data[col].astype(str) == filter_value][col]
+                            if len(matching_values) > 0:
+                                grid_points[col] = matching_values.iloc[0]
+                            else:
+                                grid_points[col] = filtered_data[col].median()
+                    else:
+                        # Use median value from filtered data for other features
+                        grid_points[col] = filtered_data[col].median()
             
             # Make predictions
             predictions = self.analyzer.predict_with_model(model_name, grid_points)
