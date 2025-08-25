@@ -389,39 +389,70 @@ class Interactive3DVisualizer:
                 np.linspace(y_min, y_max, 20)
             )
             
-            # Prepare prediction data
+            # Prepare prediction data based on filtered dataset
+            grid_size = xx.size  # Total number of grid points
             grid_points = pd.DataFrame()
-            for col in self.analyzer.feature_columns:
-                if col == x_feature:
-                    grid_points[col] = xx.ravel()
-                elif col == y_feature:
-                    grid_points[col] = yy.ravel()
-                else:
-                    # Use median value from filtered data for other features
-                    # If feature has a specific filter applied, use that value instead
-                    if col in self.plot_filter_vars and self.plot_filter_vars[col].get() != "All":
-                        # Use the filtered value for this feature
-                        filter_value = self.plot_filter_vars[col].get()
+            
+            # Always include spatial coordinates varying across the grid
+            grid_points[x_feature] = xx.ravel()
+            grid_points[y_feature] = yy.ravel()
+            
+            # For all analysis features, set values based on filters or filtered data
+            for feature in self.analyzer.analysis_features:
+                if feature in self.plot_filter_vars:
+                    filter_value = self.plot_filter_vars[feature].get()
+                    if filter_value != "All":
+                        # Use the specific filtered value for this feature
                         try:
                             numeric_value = float(filter_value)
-                            grid_points[col] = numeric_value
+                            grid_points[feature] = numeric_value
                         except ValueError:
-                            # Handle string values - use the first matching numeric value from filtered data
-                            matching_values = filtered_data[filtered_data[col].astype(str) == filter_value][col]
+                            # Handle string values - find the first matching numeric value from filtered data
+                            matching_values = filtered_data[filtered_data[feature].astype(str) == filter_value][feature]
                             if len(matching_values) > 0:
-                                grid_points[col] = matching_values.iloc[0]
+                                grid_points[feature] = matching_values.iloc[0]
                             else:
-                                grid_points[col] = filtered_data[col].median()
+                                # Fallback to filtered data median
+                                grid_points[feature] = filtered_data[feature].median()
                     else:
-                        # Use median value from filtered data for other features
+                        # No filter applied - use median from filtered dataset
+                        grid_points[feature] = filtered_data[feature].median()
+                else:
+                    # Feature not in filters (shouldn't happen, but handle gracefully)
+                    grid_points[feature] = filtered_data[feature].median()
+            
+            # Ensure all required features are present for the model
+            # The model expects all features that were used during training
+            required_features = self.analyzer.feature_columns
+            for col in required_features:
+                if col not in grid_points.columns:
+                    # Add missing column with median value from filtered data
+                    if col in filtered_data.columns:
                         grid_points[col] = filtered_data[col].median()
+                    else:
+                        # Fallback to original data median if column not in filtered data
+                        grid_points[col] = self.analyzer.df[col].median()
+            
+            # Reorder columns to match the training feature order
+            grid_points = grid_points[required_features]
+            
+            print(f"Generated prediction grid with {grid_size} points using filtered feature values")
+            print(f"Grid features: {list(grid_points.columns)}")
             
             # Make predictions
             predictions = self.analyzer.predict_with_model(model_name, grid_points)
             zz = predictions.reshape(xx.shape)
             
-            # Plot surface
-            ax.plot_surface(xx, yy, zz, alpha=0.3, color='red', linewidth=0.5)
+            # Plot surface with different appearance based on filtering
+            active_filters = sum(1 for var in self.plot_filter_vars.values() if var.get() != "All")
+            if active_filters > 0:
+                # Use a different color/style when filters are active to make it more obvious
+                ax.plot_surface(xx, yy, zz, alpha=0.4, color='orange', linewidth=0.5)
+                print(f"Plotted filtered prediction surface with {active_filters} active filters")
+            else:
+                # Default appearance when no filters are active
+                ax.plot_surface(xx, yy, zz, alpha=0.3, color='red', linewidth=0.5)
+                print("Plotted unfiltered prediction surface")
             
         except Exception as e:
             print(f"Could not add prediction surface: {str(e)}")
