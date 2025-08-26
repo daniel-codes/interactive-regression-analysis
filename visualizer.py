@@ -60,7 +60,14 @@ class Interactive3DVisualizer:
         """Initialize plot filters with unique values from training data for each feature."""
         print("Initializing plot filters...")
         
-        for feature in self.analyzer.analysis_features:
+        # Clear existing filters
+        self.plot_filter_vars.clear()
+        self.plot_filter_values.clear()
+        
+        # Only create filters for currently selected features (not including spatial columns)
+        features_to_filter = self.selected_features if hasattr(self, 'selected_features') and self.selected_features else self.analyzer.analysis_features
+        
+        for feature in features_to_filter:
             # Get unique values from the feature, sorted
             unique_values = sorted(self.analyzer.df[feature].dropna().unique())
             
@@ -74,14 +81,14 @@ class Interactive3DVisualizer:
             self.plot_filter_vars[feature] = var
             self.plot_filter_values[feature] = ["All"] + [str(val) for val in unique_values]
         
-        print(f"Plot filters initialized for {len(self.plot_filter_vars)} features")
+        print(f"Plot filters initialized for {len(self.plot_filter_vars)} features: {list(self.plot_filter_vars.keys())}")
     
     def update_plot_filter_widgets(self):
         """Update the plot filter dropdown widgets with new values after refitting."""
         print("Updating plot filter widgets...")
         
         # Update each dropdown widget with new values
-        for feature in self.analyzer.analysis_features:
+        for feature in list(self.plot_filter_vars.keys()):
             if feature in self.plot_filter_widgets:
                 dropdown = self.plot_filter_widgets[feature]
                 dropdown['values'] = self.plot_filter_values[feature]
@@ -99,32 +106,19 @@ class Interactive3DVisualizer:
         """Recreate the plot filter controls after refitting to ensure proper binding."""
         print("Recreating plot filter controls...")
         
-        # Find the plot filter frame
-        plot_filter_frame = None
-        for child in self.root.winfo_children():
-            for grandchild in child.winfo_children():
-                if hasattr(grandchild, 'winfo_children'):
-                    for control in grandchild.winfo_children():
-                        if isinstance(control, ttk.LabelFrame) and "Feature Selection for Plotting" in control.cget("text"):
-                            plot_filter_frame = control
-                            break
-                    if plot_filter_frame:
-                        break
-                if plot_filter_frame:
-                    break
-            if plot_filter_frame:
-                break
-        
-        if plot_filter_frame:
+        if hasattr(self, 'plot_filter_frame') and self.plot_filter_frame:
             # Clear existing widgets in the frame
-            for widget in plot_filter_frame.winfo_children():
+            for widget in self.plot_filter_frame.winfo_children():
                 widget.destroy()
             
+            # Clear the widget references
+            self.plot_filter_widgets.clear()
+            
             # Recreate the plot filter controls
-            self.setup_plot_filter_controls(plot_filter_frame)
+            self.setup_plot_filter_controls(self.plot_filter_frame)
             print("Plot filter controls recreated successfully")
         else:
-            print("Warning: Could not find plot filter frame to recreate")
+            print("Warning: Plot filter frame reference not found")
         
     def setup_gui(self):
         """Set up the GUI components."""
@@ -154,8 +148,8 @@ class Interactive3DVisualizer:
         feature_frame.pack(side=tk.TOP, fill=tk.X, pady=3)
         
         # Feature filtering frame for plotting
-        plot_filter_frame = ttk.LabelFrame(parent, text="Feature Selection for Plotting", padding=5)
-        plot_filter_frame.pack(side=tk.TOP, fill=tk.X, pady=3)
+        self.plot_filter_frame = ttk.LabelFrame(parent, text="Feature Selection for Plotting", padding=5)
+        self.plot_filter_frame.pack(side=tk.TOP, fill=tk.X, pady=3)
         
         # Fixed spatial coordinates (read-only)
         ttk.Label(main_controls, text="X-Axis (Fixed):").grid(row=0, column=0, padx=5, pady=5, sticky='w')
@@ -168,9 +162,9 @@ class Interactive3DVisualizer:
         
         # Model selection
         ttk.Label(main_controls, text="Model:").grid(row=0, column=4, padx=5, pady=5, sticky='w')
-        self.model_dropdown = ttk.Combobox(main_controls, textvariable=self.model_var, values=list(self.analyzer.fitted_models.keys()), state='readonly')
-        self.model_dropdown.grid(row=0, column=5, padx=5, pady=5)
-        self.model_dropdown.bind('<<ComboboxSelected>>', lambda e: self.update_plot())
+        model_dropdown = ttk.Combobox(main_controls, textvariable=self.model_var, values=list(self.analyzer.fitted_models.keys()), state='readonly')
+        model_dropdown.grid(row=0, column=5, padx=5, pady=5)
+        model_dropdown.bind('<<ComboboxSelected>>', lambda e: self.update_plot())
         
         # Buttons
         ttk.Button(main_controls, text="Refresh Plot", command=self.update_plot).grid(row=0, column=6, padx=5, pady=5)
@@ -212,7 +206,7 @@ class Interactive3DVisualizer:
                 row_num += 1
         
         # Set up plot filtering controls
-        self.setup_plot_filter_controls(plot_filter_frame)
+        self.setup_plot_filter_controls(self.plot_filter_frame)
     
     def setup_plot_filter_controls(self, parent):
         """Set up plot filtering dropdown controls."""
@@ -229,12 +223,13 @@ class Interactive3DVisualizer:
         ttk.Button(button_frame, text="Apply Filters", command=self.update_plot).pack(side=tk.LEFT)
         
         # Create dropdown filters for each feature in a flexible grid
-        num_features = len(self.analyzer.analysis_features)
+        available_features = list(self.plot_filter_vars.keys())
+        num_features = len(available_features)
         max_cols = min(3, max(2, num_features // 4 + 1))  # 2-3 columns based on feature count
         row_num = 2
         col_num = 0
         
-        for i, feature in enumerate(self.analyzer.analysis_features):
+        for i, feature in enumerate(available_features):
             # Create a more readable feature name for display
             display_name = feature.replace('_', ' ').title()
             
@@ -384,13 +379,15 @@ class Interactive3DVisualizer:
             self.analyzer.fit_all_algorithms()
             
             # Update model dropdown with new models
-            if hasattr(self, 'model_dropdown'):
-                self.model_dropdown['values'] = list(self.analyzer.fitted_models.keys())
-                best_model = list(self.analyzer.fitted_models.keys())[0]
-                self.model_var.set(best_model)
-                print(f"Updated model dropdown. Best model: {best_model}")
-            else:
-                print("Warning: Model dropdown not found")
+            model_dropdown = None
+            for child in self.root.winfo_children():
+                for grandchild in child.winfo_children():
+                    if hasattr(grandchild, 'winfo_children'):
+                        for control in grandchild.winfo_children():
+                            if isinstance(control, ttk.Combobox) and 'model' in str(control).lower():
+                                control['values'] = list(self.analyzer.fitted_models.keys())
+                                self.model_var.set(list(self.analyzer.fitted_models.keys())[0])
+                                break
             
             # Reinitialize plot filters with the new feature set
             self.initialize_plot_filters()
@@ -398,11 +395,12 @@ class Interactive3DVisualizer:
             # Recreate the plot filter controls to ensure proper binding
             self.recreate_plot_filter_controls()
             
-            # Force a plot update to ensure the new model is displayed
+            # Force GUI update and plot refresh
+            self.root.update_idletasks()
             self.update_plot()
             
-            # Force another update after a short delay to ensure GUI is fully updated
-            self.root.after(200, self.update_plot)
+            print(f"Refit complete. New model: {self.model_var.get()}")
+            print(f"Available plot filters: {list(self.plot_filter_vars.keys())}")
             
             messagebox.showinfo("Success", f"Models refitted with {len(self.selected_features)} features")
             
@@ -418,7 +416,6 @@ class Interactive3DVisualizer:
             x_feature = "row"
             y_feature = "col"
             model_name = self.model_var.get()
-            print(f"Updating plot with model: {model_name}")
             
             # Get filtered data based on plot filter selections
             filtered_data = self.get_filtered_data()
@@ -444,10 +441,7 @@ class Interactive3DVisualizer:
             
             # Always create prediction surface if model is available
             if model_name in self.analyzer.fitted_models:
-                print(f"Creating prediction surface for model: {model_name}")
                 self.add_prediction_surface(ax, x_feature, y_feature, model_name, filtered_data)
-            else:
-                print(f"Warning: Model '{model_name}' not found in fitted models: {list(self.analyzer.fitted_models.keys())}")
             
             # Labels and title
             ax.set_xlabel('Row (Spatial X)', fontsize=12)
@@ -540,8 +534,8 @@ class Interactive3DVisualizer:
             grid_points[x_feature] = xx.ravel()
             grid_points[y_feature] = yy.ravel()
             
-            # For all analysis features, set values based on filters or filtered data
-            for feature in self.analyzer.analysis_features:
+            # For all analysis features that are part of the current model, set values based on filters or filtered data
+            for feature in self.selected_features if hasattr(self, 'selected_features') and self.selected_features else self.analyzer.analysis_features:
                 if feature in self.plot_filter_vars:
                     filter_value = self.plot_filter_vars[feature].get()
                     if filter_value != "All":
