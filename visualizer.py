@@ -35,6 +35,13 @@ class Interactive3DVisualizer:
         self.y_var = tk.StringVar(value="col")
         self.model_var = tk.StringVar(value=list(self.analyzer.fitted_models.keys())[0])
         
+        # Plot type selection (3D or 2D)
+        self.plot_type_var = tk.StringVar(value="3D")
+        
+        # Column selection for 2D plot
+        self.col_var = tk.StringVar(value="All")
+        self.initialize_column_selection()
+        
         # Feature selection for regression analysis (dynamic based on dataframe)
         self.feature_vars = {}
         self.selected_features = []
@@ -82,6 +89,13 @@ class Interactive3DVisualizer:
             self.plot_filter_values[feature] = ["All"] + [str(val) for val in unique_values]
         
         print(f"Plot filters initialized for {len(self.plot_filter_vars)} features: {list(self.plot_filter_vars.keys())}")
+    
+    def initialize_column_selection(self):
+        """Initialize column selection for 2D plot."""
+        # Get unique column values from the dataset
+        unique_cols = sorted(self.analyzer.df['col'].unique())
+        self.col_values = ["All"] + [str(col) for col in unique_cols]
+        print(f"Column selection initialized with {len(self.col_values)} options")
     
     def update_plot_filter_widgets(self):
         """Update the plot filter dropdown widgets with new values after refitting."""
@@ -166,10 +180,22 @@ class Interactive3DVisualizer:
         model_dropdown.grid(row=0, column=5, padx=5, pady=5)
         model_dropdown.bind('<<ComboboxSelected>>', lambda e: self.update_plot())
         
+        # Plot type selection
+        ttk.Label(main_controls, text="Plot Type:").grid(row=0, column=6, padx=5, pady=5, sticky='w')
+        plot_type_dropdown = ttk.Combobox(main_controls, textvariable=self.plot_type_var, values=["3D", "2D"], state='readonly', width=5)
+        plot_type_dropdown.grid(row=0, column=7, padx=5, pady=5)
+        plot_type_dropdown.bind('<<ComboboxSelected>>', lambda e: self.update_plot())
+        
+        # Column selection for 2D plot (only visible when 2D is selected)
+        ttk.Label(main_controls, text="2D Col:").grid(row=0, column=8, padx=5, pady=5, sticky='w')
+        self.col_dropdown = ttk.Combobox(main_controls, textvariable=self.col_var, values=self.col_values, state='readonly', width=8)
+        self.col_dropdown.grid(row=0, column=9, padx=5, pady=5)
+        self.col_dropdown.bind('<<ComboboxSelected>>', lambda e: self.update_plot())
+        
         # Buttons
-        ttk.Button(main_controls, text="Refresh Plot", command=self.update_plot).grid(row=0, column=6, padx=5, pady=5)
-        ttk.Button(main_controls, text="Refit Models", command=self.refit_models).grid(row=0, column=7, padx=5, pady=5)
-        ttk.Button(main_controls, text="Model Comparison", command=self.show_model_comparison).grid(row=0, column=8, padx=5, pady=5)
+        ttk.Button(main_controls, text="Refresh Plot", command=self.update_plot).grid(row=0, column=10, padx=5, pady=5)
+        ttk.Button(main_controls, text="Refit Models", command=self.refit_models).grid(row=0, column=11, padx=5, pady=5)
+        ttk.Button(main_controls, text="Model Comparison", command=self.show_model_comparison).grid(row=0, column=12, padx=5, pady=5)
         
         # Feature selection checkboxes
         num_features = len(self.analyzer.analysis_features)
@@ -395,6 +421,12 @@ class Interactive3DVisualizer:
             # Recreate the plot filter controls to ensure proper binding
             self.recreate_plot_filter_controls()
             
+            # Update column dropdown
+            self.initialize_column_selection()
+            if hasattr(self, 'col_dropdown'):
+                self.col_dropdown['values'] = self.col_values
+                self.col_var.set("All")
+            
             # Force GUI update and plot refresh
             self.root.update_idletasks()
             self.update_plot()
@@ -408,94 +440,174 @@ class Interactive3DVisualizer:
             messagebox.showerror("Error", f"Error refitting models: {str(e)}")
     
     def update_plot(self):
-        """Update the 3D plot with current selections."""
+        """Update the plot with current selections (3D or 2D)."""
         try:
             self.figure.clear()
             
-            # Fixed spatial coordinates
-            x_feature = "row"
-            y_feature = "col"
-            model_name = self.model_var.get()
+            plot_type = self.plot_type_var.get()
             
-            # Get filtered data based on plot filter selections
-            filtered_data = self.get_filtered_data()
-            
-            # Create 3D subplot
-            ax = self.figure.add_subplot(111, projection='3d')
-            
-            # Plot actual data points only if filtered data exists
-            scatter = None
-            if len(filtered_data) > 0:
-                # Get data from filtered dataset - spatial coordinates for X/Y, target for Z
-                x_data = filtered_data[x_feature].values
-                y_data = filtered_data[y_feature].values
-                z_data = filtered_data[self.analyzer.target_column].values
-                
-                # Plot actual data points
-                scatter = ax.scatter(x_data, y_data, z_data, c=z_data, cmap='viridis', alpha=0.6, s=50)
+            if plot_type == "3D":
+                self.update_plot_3d()
             else:
-                # Add text to indicate no training points match the filters
-                ax.text2D(0.02, 0.02, 'No training points match current filters', 
-                         transform=ax.transAxes, fontsize=10, 
-                         bbox=dict(boxstyle='round', facecolor='yellow', alpha=0.7))
+                self.update_plot_2d()
+                
+        except Exception as e:
+            messagebox.showerror("Error", f"Error updating plot: {str(e)}")
+    
+    def update_plot_3d(self):
+        """Update the 3D plot with current selections."""
+        # Fixed spatial coordinates
+        x_feature = "row"
+        y_feature = "col"
+        model_name = self.model_var.get()
+        
+        # Get filtered data based on plot filter selections
+        filtered_data = self.get_filtered_data()
+        
+        # Create 3D subplot
+        ax = self.figure.add_subplot(111, projection='3d')
+        
+        # Plot actual data points only if filtered data exists
+        scatter = None
+        if len(filtered_data) > 0:
+            # Get data from filtered dataset - spatial coordinates for X/Y, target for Z
+            x_data = filtered_data[x_feature].values
+            y_data = filtered_data[y_feature].values
+            z_data = filtered_data[self.analyzer.target_column].values
             
-            # Always create prediction surface if model is available
-            if model_name in self.analyzer.fitted_models:
-                self.add_prediction_surface(ax, x_feature, y_feature, model_name, filtered_data)
+            # Plot actual data points
+            scatter = ax.scatter(x_data, y_data, z_data, c=z_data, cmap='viridis', alpha=0.6, s=50)
+        else:
+            # Add text to indicate no training points match the filters
+            ax.text2D(0.02, 0.02, 'No training points match current filters', 
+                     transform=ax.transAxes, fontsize=10, 
+                     bbox=dict(boxstyle='round', facecolor='yellow', alpha=0.7))
+        
+        # Always create prediction surface if model is available
+        if model_name in self.analyzer.fitted_models:
+            self.add_prediction_surface(ax, x_feature, y_feature, model_name, filtered_data)
+        
+        # Labels and title
+        ax.set_xlabel('Row (Spatial X)', fontsize=12)
+        ax.set_ylabel('Col (Spatial Y)', fontsize=12)
+        ax.set_zlabel(f'{self.analyzer.target_column}', fontsize=12)
+        
+        # Create title with selected features and filter info
+        selected_count = len(self.selected_features) if hasattr(self, 'selected_features') else len(self.analyzer.analysis_features)
+        
+        # Count active filters
+        active_filters = sum(1 for var in self.plot_filter_vars.values() if var.get() != "All")
+        filter_info = f" | Filters: {active_filters}" if active_filters > 0 else ""
+        data_info = f" | Data: {len(filtered_data)}/{len(self.analyzer.df)} points"
+        
+        ax.set_title(f'Spatial 3D Regression Visualization\nModel: {model_name} | Features: {selected_count}{filter_info}{data_info}', fontsize=14)
+        
+        # Add colorbar only if we have scatter points
+        if scatter is not None:
+            self.figure.colorbar(scatter, ax=ax, shrink=0.5, aspect=20)
+        
+        # Model performance info - calculate metrics based on visible data
+        metrics = self.calculate_filtered_metrics(filtered_data, model_name)
+        
+        if metrics is not None:
+            # Use metrics calculated from visible training points
+            metrics_text = (f"Plot Metrics (n={metrics['N_Points']}):\n"
+                           f"R² = {metrics['R2']:.4f}\n"
+                           f"MSE = {metrics['MSE']:.2f}\n"
+                           f"MAE = {metrics['MAE']:.2f}\n"
+                           f"Max Diff = {metrics['Max_Diff']:.2f}")
+            bbox_color = 'lightgreen'
+        elif model_name in self.analyzer.model_results:
+            # Fallback to overall model metrics when no visible points
+            results = self.analyzer.model_results[model_name]
+            metrics_text = (f"Overall Model Metrics:\n"
+                           f"R² = {results['R2_Score']:.4f}\n"
+                           f"MSE = {results['MSE']:.2f}\n"
+                           f"MAE = {results['MAE']:.2f}\n"
+                           f"RMSE = {results['RMSE']:.2f}")
+            bbox_color = 'wheat'
+        else:
+            # Final fallback to basic R2 score
+            r2_score = self.analyzer.model_scores.get(model_name, 0.0)
+            metrics_text = f"R² Score: {r2_score:.4f}"
+            bbox_color = 'wheat'
+        
+        ax.text2D(0.02, 0.98, metrics_text, transform=ax.transAxes, 
+                 fontsize=10, verticalalignment='top', 
+                 bbox=dict(boxstyle='round', facecolor=bbox_color, alpha=0.8))
+        
+        self.canvas.draw()
+    
+    def update_plot_2d(self):
+        """Update the 2D plot with current selections."""
+        model_name = self.model_var.get()
+        selected_col = self.col_var.get()
+        
+        # Get filtered data based on plot filter selections
+        filtered_data = self.get_filtered_data()
+        
+        # Filter data by column if specific column is selected
+        if selected_col != "All":
+            try:
+                col_value = float(selected_col)
+                plot_data = filtered_data[filtered_data['col'] == col_value]
+            except ValueError:
+                plot_data = filtered_data[filtered_data['col'].astype(str) == selected_col]
+        else:
+            plot_data = filtered_data
+        
+        # Create 2D subplot
+        ax = self.figure.add_subplot(111)
+        
+        # Plot actual data points only if they exist
+        if len(plot_data) > 0:
+            # Plot data points
+            x_data = plot_data['row'].values
+            y_data = plot_data[self.analyzer.target_column].values
             
-            # Labels and title
-            ax.set_xlabel('Row (Spatial X)', fontsize=12)
-            ax.set_ylabel('Col (Spatial Y)', fontsize=12)
-            ax.set_zlabel(f'{self.analyzer.target_column}', fontsize=12)
-            
-            # Create title with selected features and filter info
-            selected_count = len(self.selected_features) if hasattr(self, 'selected_features') else len(self.analyzer.analysis_features)
-            
-            # Count active filters
-            active_filters = sum(1 for var in self.plot_filter_vars.values() if var.get() != "All")
-            filter_info = f" | Filters: {active_filters}" if active_filters > 0 else ""
-            data_info = f" | Data: {len(filtered_data)}/{len(self.analyzer.df)} points"
-            
-            ax.set_title(f'Spatial 3D Regression Visualization\nModel: {model_name} | Features: {selected_count}{filter_info}{data_info}', fontsize=14)
-            
-            # Add colorbar only if we have scatter points
-            if scatter is not None:
-                self.figure.colorbar(scatter, ax=ax, shrink=0.5, aspect=20)
-            
-            # Model performance info - calculate metrics based on visible data
-            metrics = self.calculate_filtered_metrics(filtered_data, model_name)
-            
+            # Color points by column value if showing all columns
+            if selected_col == "All":
+                c_data = plot_data['col'].values
+                scatter = ax.scatter(x_data, y_data, c=c_data, cmap='viridis', alpha=0.6, s=30)
+                # Add colorbar
+                self.figure.colorbar(scatter, ax=ax, shrink=0.8, aspect=20, label='Column')
+            else:
+                scatter = ax.scatter(x_data, y_data, alpha=0.6, s=30, color='blue')
+        else:
+            # Add text to indicate no training points match the filters
+            ax.text(0.02, 0.02, 'No training points match current filters', 
+                   transform=ax.transAxes, fontsize=10, 
+                   bbox=dict(boxstyle='round', facecolor='yellow', alpha=0.7))
+        
+        # Always add prediction line if model is available
+        if model_name in self.analyzer.fitted_models:
+            self.add_prediction_line_2d(ax, plot_data, model_name, selected_col, filtered_data)
+        
+        # Labels and title
+        ax.set_xlabel('Row (Spatial X)', fontsize=10)
+        ax.set_ylabel(f'{self.analyzer.target_column}', fontsize=10)
+        
+        # Create title
+        col_info = f" | Col: {selected_col}" if selected_col != "All" else ""
+        data_info = f" | Data: {len(plot_data)}/{len(filtered_data)} points"
+        ax.set_title(f'2D Row vs Target Plot{col_info}{data_info}', fontsize=11)
+        
+        # Add grid
+        ax.grid(True, alpha=0.3)
+        
+        # Model performance info for 2D plot
+        if len(plot_data) > 0:
+            metrics = self.calculate_filtered_metrics(plot_data, model_name)
             if metrics is not None:
-                # Use metrics calculated from visible training points
                 metrics_text = (f"Plot Metrics (n={metrics['N_Points']}):\n"
                                f"R² = {metrics['R2']:.4f}\n"
                                f"MSE = {metrics['MSE']:.2f}\n"
-                               f"MAE = {metrics['MAE']:.2f}\n"
-                               f"Max Diff = {metrics['Max_Diff']:.2f}")
-                bbox_color = 'lightgreen'
-            elif model_name in self.analyzer.model_results:
-                # Fallback to overall model metrics when no visible points
-                results = self.analyzer.model_results[model_name]
-                metrics_text = (f"Overall Model Metrics:\n"
-                               f"R² = {results['R2_Score']:.4f}\n"
-                               f"MSE = {results['MSE']:.2f}\n"
-                               f"MAE = {results['MAE']:.2f}\n"
-                               f"RMSE = {results['RMSE']:.2f}")
-                bbox_color = 'wheat'
-            else:
-                # Final fallback to basic R2 score
-                r2_score = self.analyzer.model_scores.get(model_name, 0.0)
-                metrics_text = f"R² Score: {r2_score:.4f}"
-                bbox_color = 'wheat'
-            
-            ax.text2D(0.02, 0.98, metrics_text, transform=ax.transAxes, 
-                     fontsize=10, verticalalignment='top', 
-                     bbox=dict(boxstyle='round', facecolor=bbox_color, alpha=0.8))
-            
-            self.canvas.draw()
-            
-        except Exception as e:
-            messagebox.showerror("Error", f"Error updating plot: {str(e)}")
+                               f"MAE = {metrics['MAE']:.2f}")
+                ax.text(0.02, 0.98, metrics_text, transform=ax.transAxes, 
+                       fontsize=9, verticalalignment='top', 
+                       bbox=dict(boxstyle='round', facecolor='lightgreen', alpha=0.8))
+        
+        self.canvas.draw()
     
     def add_prediction_surface(self, ax, x_feature, y_feature, model_name, filtered_data):
         """Add prediction surface to the 3D plot based on filtered data."""
@@ -596,6 +708,98 @@ class Interactive3DVisualizer:
             
         except Exception as e:
             print(f"Could not add prediction surface: {str(e)}")
+    
+    def add_prediction_line_2d(self, ax, plot_data, model_name, selected_col, filtered_data):
+        """Add prediction line to the 2D plot based on data range."""
+        try:
+            # Determine row range for prediction line
+            if len(plot_data) > 0:
+                # Use plot data range if data exists
+                row_min, row_max = plot_data['row'].min(), plot_data['row'].max()
+                reference_data = plot_data
+            else:
+                # Use full filtered data range if no plot data exists
+                if len(filtered_data) > 0:
+                    row_min, row_max = filtered_data['row'].min(), filtered_data['row'].max()
+                    reference_data = filtered_data
+                else:
+                    # Use full dataset range as final fallback
+                    row_min, row_max = self.analyzer.df['row'].min(), self.analyzer.df['row'].max()
+                    reference_data = self.analyzer.df
+            
+            # Extend the range slightly
+            row_range_span = row_max - row_min
+            row_min -= 0.05 * row_range_span
+            row_max += 0.05 * row_range_span
+            
+            # Create a range of row values for prediction
+            row_range = np.linspace(row_min, row_max, 50)
+            
+            # Prepare prediction data
+            prediction_data = pd.DataFrame()
+            prediction_data['row'] = row_range
+            
+            # Set column value based on selection
+            if selected_col != "All":
+                try:
+                    col_value = float(selected_col)
+                    prediction_data['col'] = col_value
+                except ValueError:
+                    prediction_data['col'] = selected_col
+            else:
+                # Use median column value for "All" selection from reference data
+                prediction_data['col'] = reference_data['col'].median()
+            
+            # Set other features based on plot filters or reference data median values
+            for feature in self.selected_features if hasattr(self, 'selected_features') and self.selected_features else self.analyzer.analysis_features:
+                if feature in self.plot_filter_vars:
+                    filter_value = self.plot_filter_vars[feature].get()
+                    if filter_value != "All":
+                        try:
+                            numeric_value = float(filter_value)
+                            prediction_data[feature] = numeric_value
+                        except ValueError:
+                            # Handle string values using reference data
+                            matching_values = reference_data[reference_data[feature].astype(str) == filter_value][feature]
+                            if len(matching_values) > 0:
+                                prediction_data[feature] = matching_values.iloc[0]
+                            else:
+                                prediction_data[feature] = reference_data[feature].median()
+                    else:
+                        prediction_data[feature] = reference_data[feature].median()
+                else:
+                    prediction_data[feature] = reference_data[feature].median()
+            
+            # Ensure all required features are present
+            for col in self.analyzer.feature_columns:
+                if col not in prediction_data.columns:
+                    if col in reference_data.columns:
+                        prediction_data[col] = reference_data[col].median()
+                    else:
+                        # Final fallback to original data
+                        prediction_data[col] = self.analyzer.df[col].median()
+            
+            # Reorder columns to match training order
+            prediction_data = prediction_data[self.analyzer.feature_columns]
+            
+            # Make predictions
+            predictions = self.analyzer.predict_with_model(model_name, prediction_data)
+            
+            # Plot prediction line with different appearance based on data availability
+            if len(plot_data) > 0:
+                # Normal prediction line when training points are visible
+                ax.plot(row_range, predictions, 'r-', linewidth=2, alpha=0.8, label='Model Prediction')
+                print(f"Plotted 2D prediction line with {len(plot_data)} training points visible")
+            else:
+                # Enhanced prediction line when no training points are visible
+                ax.plot(row_range, predictions, 'orange', linewidth=3, alpha=0.9, label='Model Prediction (No Data Points)')
+                print(f"Plotted 2D prediction line with no training points visible (using {reference_data.shape[0]} reference points)")
+            
+            # Add legend
+            ax.legend()
+            
+        except Exception as e:
+            print(f"Could not add prediction line: {str(e)}")
     
     def show_model_comparison(self):
         """Show a comparison window with all model performances."""
